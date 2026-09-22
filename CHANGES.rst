@@ -3,6 +3,16 @@ Changes
 =======
 
 
+1.3.1
+-----
+
+* Allow Pyramid 2. The cap was in pyproject.toml but never reached PyPI until
+  1.3: 1.2 published without one and has been running against Pyramid 2 ever
+  since, while 1.3 published the cap and so pulled dependants back down to
+  Pyramid 1. Upgrade straight to this release; 1.3 is best avoided.
+  [zupo]
+
+
 1.3
 ---
 
