@@ -23,7 +23,19 @@ Compatibility
 pyramid_cloudflare_access runs with pyramid>=1.7 and python>=3.6.
 Other versions might also work.
 
-Heroku Review Apps deployed on `*.herokuapp.com` subdomains automatically skip the cloudflare access check as their domains are dynamic and as such can't be configured in Cloudflare dashboard in advance. 
+Review Apps skip the Cloudflare Access check, as their domains are dynamic and as such can't be configured in Cloudflare dashboard in advance. `*.herokuapp.com` is skipped by default. To name the hostnames yourself, for example on Fly.io::
+
+    pyramid_cloudflare_access.bypass_hosts = fly.dev
+
+Several are allowed, whitespace separated::
+
+    pyramid_cloudflare_access.bypass_hosts =
+        herokuapp.com
+        fly.dev
+
+Setting this replaces the default rather than adding to it, so an app that has left Heroku can have `*.herokuapp.com` verified like any other hostname.
+
+A bypassed hostname is served without authentication, so protect it another way, such as the IP allowlist in `pyramid_heroku.herokuapp_access`. This matters most on platforms that route by TLS SNI rather than by Host, because there the `Host` header is whatever the caller sends.
 
 Usage
 -----

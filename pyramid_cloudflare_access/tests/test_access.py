@@ -94,6 +94,27 @@ def test_auth_failed(mocker) -> None:
     with pytest.raises(HTTPForbidden):
         CloudflareAccess(tween_handler, request.registry)(request)
 
+def bypass_request(mocker, host: str, bypass_hosts: str = None):
+    """Build a request to `host` with no Cloudflare Access cookie."""
+
+    mocker.patch(
+        "pyramid_cloudflare_access.PyJWKClient.fetch_data", return_value=sample_jwk
+    )
+
+    request = testing.DummyRequest()
+    request.cookies = {}
+    request.registry.settings = {
+        "pyramid_cloudflare_access.policy_audience": sample_audience,
+        "pyramid_cloudflare_access.team": "https://foo.cloudflareaccess.com",
+    }
+    if bypass_hosts is not None:
+        request.registry.settings[
+            "pyramid_cloudflare_access.bypass_hosts"
+        ] = bypass_hosts
+    request.headers["Host"] = host
+    return request
+
+
 def test_herokuapp(mocker) -> None:
     """Test that Cloudflare Access is skipped for Heroku-hosted apps.
 
@@ -102,14 +123,66 @@ def test_herokuapp(mocker) -> None:
     in Cloudflare dashboard.
     """
     tween_handler = mocker.Mock()
-    
-    request = testing.DummyRequest()
-    request.cookies = {}
-    request.registry.settings = {
-        "pyramid_cloudflare_access.policy_audience": sample_audience,
-        "pyramid_cloudflare_access.team": "https://foo.cloudflareaccess.com",
-    }
-    request.headers['Host'] = "foo.herokuapp.com"
+    request = bypass_request(mocker, "foo.herokuapp.com")
+
+    CloudflareAccess(tween_handler, request.registry)(request)
+    tween_handler.assert_called_with(request)
+
+
+def test_bypass_hosts(mocker) -> None:
+    """Test that the app can name the hostnames to skip, such as Fly's."""
+
+    tween_handler = mocker.Mock()
+    request = bypass_request(mocker, "myapp-pr-12.fly.dev", bypass_hosts="fly.dev")
+
+    CloudflareAccess(tween_handler, request.registry)(request)
+    tween_handler.assert_called_with(request)
+
+
+def test_bypass_hosts_replaces_the_default(mocker) -> None:
+    """Test that naming hostnames drops the ones skipped by default.
+
+    An app that is no longer on Heroku wants `*.herokuapp.com` verified
+    like any other hostname.
+    """
+    tween_handler = mocker.Mock()
+    request = bypass_request(mocker, "foo.herokuapp.com", bypass_hosts="fly.dev")
+
+    with pytest.raises(HTTPBadRequest):
+        CloudflareAccess(tween_handler, request.registry)(request)
+
+
+def test_bypass_hosts_accepts_several(mocker) -> None:
+    """Test that an app mid-migration can skip both platforms."""
+
+    tween_handler = mocker.Mock()
+    for host in ("foo.herokuapp.com", "foo.fly.dev"):
+        request = bypass_request(
+            mocker, host, bypass_hosts="herokuapp.com\nfly.dev"
+        )
+        CloudflareAccess(tween_handler, request.registry)(request)
+        tween_handler.assert_called_with(request)
+
+
+def test_bypass_matches_whole_labels_only(mocker) -> None:
+    """Test that a lookalike hostname does not skip Cloudflare Access.
+
+    Platforms that route by TLS SNI rather than by Host leave the header
+    to the caller, so a substring match here would be a way in.
+    """
+    tween_handler = mocker.Mock()
+
+    for host in ("herokuapp.com.attacker.example", "notherokuapp.com"):
+        request = bypass_request(mocker, host)
+        with pytest.raises(HTTPBadRequest):
+            CloudflareAccess(tween_handler, request.registry)(request)
+
+
+def test_bypass_ignores_the_port(mocker) -> None:
+    """Test that a Host header carrying a port is still recognised."""
+
+    tween_handler = mocker.Mock()
+    request = bypass_request(mocker, "foo.herokuapp.com:8080")
 
     CloudflareAccess(tween_handler, request.registry)(request)
     tween_handler.assert_called_with(request)

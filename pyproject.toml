@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "pyramid_cloudflare_access"
-version = "1.0.1"
-description = "A bunch of helpers for successfully running Pyramid on Heroku."
+version = "1.3"
+description = "Tween for verifying Cloudflare Access wrapped requests."
 readme = "README.rst"
 include = [ "CHANGES.rst", "COPYING.txt" ]
 classifiers = [

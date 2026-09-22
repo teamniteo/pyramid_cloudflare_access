@@ -10,6 +10,10 @@ from pyramid.tweens import INGRESS
 import pyramid.httpexceptions as exc
 import typing as t
 
+#: Hostnames skipped when the app does not say otherwise. Heroku Review Apps
+#: have always been skipped, so leaving this out keeps that behaviour.
+DEFAULT_BYPASS_HOSTS = "herokuapp.com"
+
 
 def includeme(config: Configurator) -> None:  # pragma: no cover
     # as possibly first tween in chain, order does not matter
@@ -34,6 +38,9 @@ class CloudflareAccess:
         settings = getattr(registry, "settings", {})
         self.handler = handler
         self.policy_audience = settings["pyramid_cloudflare_access.policy_audience"]
+        self.bypass_hosts = settings.get(
+            "pyramid_cloudflare_access.bypass_hosts", DEFAULT_BYPASS_HOSTS
+        ).split()
         self.public_keys = _get_public_keys(settings["pyramid_cloudflare_access.team"])
 
     def authenticated_request(self, request: Request) -> bool:
@@ -58,12 +65,21 @@ class CloudflareAccess:
 
         return False
 
+    def bypassed(self, request: Request) -> bool:
+        """Report whether this hostname is served without Cloudflare Access."""
+
+        # A Host header may carry a port, which is not part of the hostname.
+        host = request.headers.get("Host", "").split(":")[0]
+
+        return any(host == h or host.endswith(f".{h}") for h in self.bypass_hosts)
+
     def __call__(self, request: Request):
 
-        # Support for Heroku Review apps
-        if "herokuapp.com" in request.headers.get("Host", ""):
+        # Review apps get a hostname per pull request, which cannot be
+        # registered with a Cloudflare Access application in advance.
+        if self.bypassed(request):
             return self.handler(request)
-            
+
         if not self.authenticated_request(request):
             raise exc.HTTPForbidden()
 
